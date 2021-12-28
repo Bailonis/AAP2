@@ -24,26 +24,42 @@ def main():
 
     std, distance, points = calculate_eps(best_feature, labels_val)
 
-    
-    dbscan(std, distance[15::])
+  #  distance= distance[distance> 0.50]
+   # distance= distance[distance< 1.00]
+    #dbscan(std, distance)
 
-    labelsDB = doDBSCAN(std, distance[404])
-    report_clusters(points, labelsDB, 'DBSCAN.html')
+    #labelsDB = doDBSCAN(std, 0.95)
+    #report_clusters(points, labelsDB, 'DBSCAN.html')
     
-    k_means(std)
+    #k_means(std)
     
-    labelsDB = doKMEANS(std, 10)
-    report_clusters(points, labelsDB, 'K-Means.html')
+    #labelsDB = doKMEANS(std, 10)
+    #report_clusters(points, labelsDB, 'K-Means.html')
     
+    #mean_shift(std)
+    
+    labelsSM = aux_mean_shift(std, 1.00)
+    report_clusters(points, labelsSM, 'Means-Shift.html')
+ 
    
 def extract_features():
     
-    image_mat = images_as_matrix()
-    pca_data = PCA(n_components=6).fit_transform(image_mat)
-    tsne_data = TSNE(n_components=(6), method='exact').fit_transform(image_mat)
-    iso_data = Isomap(n_components=6).fit_transform(image_mat)
+    try:
+        data = np.load('features.npz')
+        pca_data = data['pca']
+        tsne_data = data['tsne']
+        iso_data = data['iso']
+        features = np.append(pca_data, np.append(tsne_data, iso_data, axis=1), axis=1)
+    except IOError:
+        
+            image_mat = images_as_matrix()
+            pca_data = PCA(n_components=6).fit_transform(image_mat)
+            tsne_data = TSNE(n_components=(6), method='exact').fit_transform(image_mat)
+            iso_data = Isomap(n_components=6).fit_transform(image_mat)
+            features = np.append(pca_data, np.append(tsne_data, iso_data, axis=1), axis=1)
+            np.savez('features.npz', pca = pca_data, tsne = tsne_data, iso = iso_data)
     
-    return np.append(pca_data, np.append(tsne_data, iso_data, axis=1), axis=1)
+    return features
     
     
 def get_best_feat(features):
@@ -67,19 +83,14 @@ def calculate_eps(features, labels):
     
     knc = KNeighborsClassifier(n_neighbors = 5).fit(stdBestFeatures,np.zeros(stdBestFeatures.shape[0]))
     
- 
-    distances, ind = knc.kneighbors(return_distance=True)
-    dist_graph = np.zeros([stdBestFeatures.shape[0]])
-    for ix in range(0,stdBestFeatures.shape[0]):
-        dist_graph[ix]=distances[ix][5-1]
+    distances, _ = knc.kneighbors(return_distance=True)
+    
+    dist_graph = distances[:,-1]
+
     np.ndarray.sort(dist_graph)
     
     distance = dist_graph[::-1]
-    
-    indexes = np.zeros(distance.shape[0])
-    for ix in range(0, len(indexes)):
-        indexes[ix] = ix  
-      
+    indexes = np.arange(distance.shape[0])
     
     plt.xlabel('Indexes')
     plt.ylabel('Distances')
@@ -129,7 +140,7 @@ def plots(parameter_vals, precisions, recalls, rands, f1s, adjusts, silhouettes,
     plt.plot(parameter_vals, f1s, '-r', label = 'F1 values', color = 'yellow')
     plt.plot(parameter_vals, adjusts, '-r', label = 'Adjusted rand values', color = 'pink')
     plt.plot(parameter_vals, silhouettes, '-r', label = 'Silhouette values', color = 'purple')
-    plt.legend() 
+    plt.legend(loc='center left', bbox_to_anchor=(1, 0.5))
     plt.savefig(graph_name)
     
 def doDBSCAN(X,eps):
@@ -173,7 +184,7 @@ def k_means(features):
     adjusted_rands = []
     silhouettes = []
     all_i = []
-    for i in range(2,16):
+    for i in range(2,12):
         labels = doKMEANS(features,i)
         all_i.append(i)
         precision, recall, rand, f1, adjusted_rand = compute_scores(labels)
@@ -185,6 +196,32 @@ def k_means(features):
         adjusted_rands.append(adjusted_rand)
         silhouettes.append(silhouette)
     plots(all_i, precisions, recalls, rands, f1_scores, adjusted_rands, silhouettes, 'KMEANS')
+    
+def aux_mean_shift(X, n):
+    labels = cluster.MeanShift(bandwidth=n).fit_predict(X)
+    return labels
+def mean_shift(features):
+    
+    precisions = []
+    recalls = []
+    rands = []
+    f1_scores = []
+    adjusted_rands = []
+    silhouettes = []
+    all_i = []
+    
+    for i in np.arange(0.8,1.02,0.02):
+        labels = aux_mean_shift(features,i)
+        all_i.append(i)
+        precision, recall, rand, f1, adjusted_rand = compute_scores(labels)
+        silhouette = silhouette_score(features,labels)
+        precisions.append(precision)
+        recalls.append(recall)
+        rands.append(rand)
+        f1_scores.append(f1)
+        adjusted_rands.append(adjusted_rand)
+        silhouettes.append(silhouette)
+    plots(all_i, precisions, recalls, rands, f1_scores, adjusted_rands, silhouettes, 'MEANS-SHIFT')
               
 if __name__ == '__main__':
     main()     
